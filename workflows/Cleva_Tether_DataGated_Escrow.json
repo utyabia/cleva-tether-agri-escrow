@@ -1,0 +1,183 @@
+{
+  "name": "Cleva_Tether_DataGated_Escrow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "shipment-telemetry",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -352,
+        -32
+      ],
+      "id": "860dec6d-f3a6-4120-8a73-acedf4d3c919",
+      "name": "Webhook",
+      "webhookId": "7a2c28b1-92ef-4099-89cd-ba5d899b295c"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Extract JSON data from the Webhook\npayload = _input.item.json\n\n# Parse variables with defaults\ntransit_hours = float(payload.get('transit_hours', 0))\ntemperature = float(payload.get('temperature', 0))\nhumidity = float(payload.get('humidity', 0))\n\n# Decision rules extracted from Decision Tree model:\n# High risk if temp > 30°C and humidity > 75%, OR if transit > 48h and temp > 28°C\nis_high_risk = (temperature > 30.0 and humidity > 75.0) or (transit_hours > 48.0 and temperature > 28.0)\n\nexecute_payment = not is_high_risk\n\nreturn {\n    \"shipment_id\": payload.get('shipment_id', 'UNKNOWN'),\n    \"amount_usdt\": payload.get('amount_usdt', 0),\n    \"recipient_account\": payload.get('recipient_account', ''),\n    \"recipient_name\": payload.get('recipient_name', 'Farmer/Vendor'),\n    \"execute_payment\": execute_payment,\n    \"risk_score\": 1 if is_high_risk else 0,\n    \"status_message\": \"Telemetry verified. Cargo healthy.\" if execute_payment else \"High spoilage risk detected. Escrow locked.\"\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -32
+      ],
+      "id": "46b2f16e-029a-4e5b-94ae-0f4c95081424",
+      "name": "Code in Python"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "62078e00-e0b3-40c1-91cf-8cb312ec6376",
+              "leftValue": "={{ $json.execute_payment }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        96,
+        -32
+      ],
+      "id": "34c35fa8-590a-442b-b1e6-215340291feb",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "[https://httpbin.org/post](https://httpbin.org/post)",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"source_asset\": \"USDT\",\n  \"settlement_asset\": \"NGN\",\n  \"amount_usdt\": {{ $json.amount_usdt }},\n  \"destination_bank_account\": \"{{ $json.recipient_account }}\",\n  \"reference\": \"CLEVA-PAY-{{ $json.shipment_id }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        320,
+        -128
+      ],
+      "id": "349efa6b-c341-483c-932c-e5e7efd5f8c1",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "text": "=CLEVA AUTOMATED PAYOUT RELEASED  \n\nShipment ID: {{ $json.shipment_id }}  \n\nAmount: {{ $json.amount_usdt }} \n\nUSDT  Status: Off-ramped to NGN via Cleva and deposited to account {{ $json.recipient_account }}.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        544,
+        -128
+      ],
+      "id": "f0f16a74-2130-4cfc-9b39-add66d0387c1",
+      "name": "Send a text message",
+      "webhookId": "bca643d1-19d2-4f5a-b888-e5d48b340b01"
+    },
+    {
+      "parameters": {
+        "text": "=ESCROW LOCKED — MANUAL REVIEW REQUIRED  \n\nShipment ID: {{ $json.shipment_id }}  \n\nReason: {{ $json.status_message }}  \n\nAction: Stablecoins held in smart escrow until manual inspection.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        64
+      ],
+      "id": "2bc01fd0-3a3c-4ad5-9801-8898ce095ce7",
+      "name": "Send a text message1",
+      "webhookId": "9d7144f8-1e1b-4561-ac47-e460ff8b0932"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in Python",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ad41290b-32da-4664-8df3-d3366ddc10bf",
+  "meta": {
+    "instanceId": "1821f428defb3b4a349413df79e6d251c8376c8f164e26b97cbdf74bbfd3c392"
+  },
+  "nodeGroups": [],
+  "id": "m7V8Dza0xAzFFjZn",
+  "tags": []
+}
